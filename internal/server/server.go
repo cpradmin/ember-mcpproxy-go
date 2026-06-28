@@ -2250,6 +2250,22 @@ func (rw *responseWriter) WriteHeader(code int) {
 	}
 }
 
+// Flush implements http.Flusher, passing through to the underlying writer.
+// Without it, this access-log wrapper hides the writer's Flusher capability,
+// so the streamable-HTTP server's CanStream() check fails and GET /mcp (the
+// server->client SSE notification stream) is rejected with 405. (ember fork)
+func (rw *responseWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap exposes the underlying ResponseWriter for http.ResponseController and
+// capability detection (http.Flusher / http.Hijacker). (ember fork)
+func (rw *responseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
+}
+
 // logConnectionState logs HTTP connection state changes for debugging client issues
 func (s *Server) logConnectionState(conn net.Conn, state http.ConnState) {
 	// Handle cases where conn or RemoteAddr might be nil
