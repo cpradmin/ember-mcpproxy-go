@@ -3875,6 +3875,12 @@ func (rw *responseWriter) Flush() {
 	}
 }
 
+// Unwrap exposes the underlying ResponseWriter for http.ResponseController and
+// capability detection (http.Flusher / http.Hijacker). (ember fork)
+func (rw *responseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
+}
+
 // logConnectionState logs HTTP connection state changes for debugging client issues
 func (s *Server) logConnectionState(conn net.Conn, state http.ConnState) {
 	// Handle cases where conn or RemoteAddr might be nil
