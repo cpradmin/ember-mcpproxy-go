@@ -3000,6 +3000,16 @@ func (p *MCPProxyServer) handleCallToolVariant(ctx context.Context, request mcp.
 	// below keys on the exact name), so padding is trimmed and nothing else.
 	toolName = strings.TrimSpace(toolName)
 
+	// (ember fork) Auto-qualify a bare tool name to the sole upstream. retrieve_tools
+	// advertises bare names but call_tool required "server:tool", so clients (e.g. the
+	// remote Grok-Eve connector) kept hitting "Invalid tool name format". When exactly
+	// one upstream server exists, every bare name is unambiguous — qualify it.
+	if !strings.Contains(toolName, ":") {
+		if servers := p.upstreamManager.GetAllServerNames(); len(servers) == 1 {
+			toolName = servers[0] + ":" + toolName
+		}
+	}
+
 	// Parse server and tool name early for activity logging, through the same
 	// splitServerTool the describe_tool path uses: it trims EACH segment, so
 	// "github: create_issue" resolves exactly like "github:create_issue"
@@ -3164,6 +3174,25 @@ func (p *MCPProxyServer) handleCallToolVariant(ctx context.Context, request mcp.
 	if argsErrMsg != "" {
 		p.auditAuthz(ctx, "deny", telemetry.BlockReasonOther)
 		return mcp.NewToolResultError(argsErrMsg), nil
+	}
+
+	// (ember fork) Final fallback: some clients (e.g. the Grok-Eve connector) FLATTEN
+	// the tool's arguments at the top level instead of nesting them under "args",
+	// which surfaced as "<param> is required" even with valid input. Accept that shape
+	// by treating the leftover top-level keys (minus reserved control keys) as the args.
+	if len(args) == 0 && request.Params.Arguments != nil {
+		if argumentsMap, ok := request.Params.Arguments.(map[string]interface{}); ok {
+			reserved := map[string]bool{"name": true, "args": true, "args_json": true, "intent_reason": true, "intent_data_sensitivity": true}
+			flat := make(map[string]interface{})
+			for k, v := range argumentsMap {
+				if !reserved[k] {
+					flat[k] = v
+				}
+			}
+			if len(flat) > 0 {
+				args = flat
+			}
+		}
 	}
 
 	// Handle upstream tools via upstream manager (requires server:tool format)
